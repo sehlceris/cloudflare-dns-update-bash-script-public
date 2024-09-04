@@ -1,0 +1,5 @@
+local/
+secrets/
+*.env
+config*
+!config.example.sh
