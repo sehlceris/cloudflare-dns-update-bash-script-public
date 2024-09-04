@@ -26,3 +26,11 @@ cp config.example.sh config.sh
 ```
 
 Edit `config.sh` with your Cloudflare API token, zone ID, and domains.
+
+## Crontab
+
+```
+crontab -e
+
+21 * * * * /home/user/projects/cloudflare-dns-update-bash-script/cloudflare-dns-update.sh >> /home/user/projects/cloudflare-dns-update-bash-script/dns.log 2>&1
+```
