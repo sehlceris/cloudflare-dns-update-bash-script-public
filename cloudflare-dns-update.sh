@@ -3,10 +3,8 @@
 # Exit immediately if any command exits with a non-zero status
 set -e
 
-
 # Function to detect the current public IP address
 get_public_ip() {
-
     # IP address validation regex (IPv4)
     ipv4_regex='([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])\.([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])\.([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])\.([01]?[0-9]?[0-9]|2[0-4][0-9]|25[0-5])'
 
@@ -30,38 +28,34 @@ get_public_ip() {
     echo "$ip"
 }
 
+get_dns_record() {
+    RECORD_NAME=$1
+    
+    # Use dig to get the current IP address for the record
+    # +short gives us just the IP address
+    # @1.1.1.1 uses Cloudflare's DNS server, but you can use others like @8.8.8.8 for Google
+    CURRENT_RECORD_IP=$(dig +short @1.1.1.1 A ${RECORD_NAME})
+
+    # Check if dig returned a valid IP
+    if [[ $CURRENT_RECORD_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "$CURRENT_RECORD_IP"
+    else
+        echo "NXDOMAIN"
+    fi
+}
+
 update_dns_record() {
     RECORD_NAME=$1
 
-    # Get the DNS record ID
-    RECORD_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?type=A&name=${RECORD_NAME}" \
-        -H "Authorization: Bearer ${API_TOKEN}" \
-        -H "Content-Type: application/json" | grep -o '"id":"[^"]*"' | head -n 1 | sed -E 's/"id":"([^"]*)"/\1/')
+    CURRENT_RECORD_IP=$(get_dns_record "$RECORD_NAME")
 
-    echo -e "Record Name: '$RECORD_NAME' Record ID: '$RECORD_ID'"
+    echo -e "Record Name: '$RECORD_NAME' Current IP: '$CURRENT_RECORD_IP'"
 
-    # Check if RECORD_ID is either empty or equal to "null"
-    if [ -z "${RECORD_ID}" ] || [ "${RECORD_ID}" = "null" ]; then
-        # If no record exists, create a new DNS record
-        echo -e "DNS record for ${RECORD_NAME} not found. Creating a new record."
+    # If the record doesn't exist or the IP has changed, update it
+    if [ "${CURRENT_RECORD_IP}" = "NXDOMAIN" ] || [ "${CURRENT_RECORD_IP}" != "${CURRENT_IP}" ]; then
+        echo -e "Updating DNS record for ${RECORD_NAME} to ${CURRENT_IP}"
 
-        CREATE_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records" \
-            -H "Authorization: Bearer ${API_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data "{\"type\":\"A\",\"name\":\"${RECORD_NAME}\",\"content\":\"${CURRENT_IP}\",\"ttl\":120,\"proxied\":false}")
-
-        if echo "${CREATE_RESPONSE}" | grep -q '"success":true'; then
-            echo -e "Successfully created ${RECORD_NAME} with IP ${CURRENT_IP}"
-        else
-            echo -e "Failed to create DNS record for ${RECORD_NAME}"
-            echo -e "Response: ${CREATE_RESPONSE}"
-            exit 1
-        fi
-    else
-        # If record exists, update the DNS record with the new IP
-        echo -e "Updating existing DNS record for ${RECORD_NAME}."
-
-        UPDATE_RESPONSE=$(curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${RECORD_ID}" \
+        UPDATE_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records" \
             -H "Authorization: Bearer ${API_TOKEN}" \
             -H "Content-Type: application/json" \
             --data "{\"type\":\"A\",\"name\":\"${RECORD_NAME}\",\"content\":\"${CURRENT_IP}\",\"ttl\":120,\"proxied\":false}")
@@ -73,6 +67,8 @@ update_dns_record() {
             echo -e "Response: ${UPDATE_RESPONSE}"
             exit 1
         fi
+    else
+        echo -e "IP address for ${RECORD_NAME} is already up to date (${CURRENT_IP}). Skipping update."
     fi
 }
 
@@ -93,14 +89,14 @@ source ./config.sh
 
 # Update the main domain if desired
 if [ "$UPDATE_ROOT_DOMAIN" = true ]; then
-    echo -e "\nUpdating root domain ${ROOT_DOMAIN}"
+    echo -e "\nChecking root domain ${ROOT_DOMAIN}"
     update_dns_record "${ROOT_DOMAIN}"
 fi
 
 # Update all subdomains in the array
 for SUBDOMAIN in "${SUBDOMAINS[@]}"; do
     RECORD_NAME="${SUBDOMAIN}.${ROOT_DOMAIN}"
-    echo -e "\nUpdating subdomain ${RECORD_NAME}"
+    echo -e "\nChecking subdomain ${RECORD_NAME}"
     update_dns_record "${RECORD_NAME}"
 done
 

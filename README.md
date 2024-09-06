@@ -15,6 +15,7 @@ This script automates the process of updating or creating DNS records for subdom
 - bash (tested on Linux/macOS).
 - curl (for making API requests).
 - sed, grep (for text parsing).
+- dig (for checking DNS records)
 - A valid [Cloudflare API token](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/) that has the permission to edit DNS for your zone.
 
 ## Setup
