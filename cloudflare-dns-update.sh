@@ -88,7 +88,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 # Load the config file (variables)
-source ./config.sh
+source $CONFIG_FILE
 
 # Update the main domain if desired
 if [ "$UPDATE_ROOT_DOMAIN" = true ]; then
