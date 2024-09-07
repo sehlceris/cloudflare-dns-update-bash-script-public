@@ -3,6 +3,9 @@
 # Exit immediately if any command exits with a non-zero status
 set -e
 
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+echo "script dir: $SCRIPT_DIR"
+
 # Function to detect the current public IP address
 get_public_ip() {
     # IP address validation regex (IPv4)
@@ -78,7 +81,7 @@ echo -e "\nDynamic DNS Update $(date)"
 echo -e "IP address detected as $CURRENT_IP"
 
 # Check if the config file exists, exit if not
-CONFIG_FILE="./config.sh"
+CONFIG_FILE="$SCRIPT_DIR/config.sh"
 if [ ! -f "$CONFIG_FILE" ]; then
     echo -e "\nError: Configuration file 'config.sh' not found! Create it by using 'cp config.example.sh config.sh' and editing it to your needs"
     exit 1
