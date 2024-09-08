@@ -47,7 +47,73 @@ get_dns_record() {
     fi
 }
 
+create_dns_record() {
+    RECORD_NAME=$1
+    echo "DNS record for ${RECORD_NAME} not found. Creating a new record."
+
+    CREATE_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records" \
+        -H "Authorization: Bearer ${API_TOKEN}" \
+        -H "Content-Type: application/json" \
+        --data "{\"type\":\"A\",\"name\":\"${RECORD_NAME}\",\"content\":\"${CURRENT_IP}\",\"ttl\":120,\"proxied\":false}")
+
+    if echo "${CREATE_RESPONSE}" | grep -q '"success":true'; then
+        echo "Successfully created ${RECORD_NAME} with IP ${CURRENT_IP}"
+    else
+        echo "Failed to create DNS record for ${RECORD_NAME}"
+        echo "Response: ${CREATE_RESPONSE}"
+        exit 1
+    fi
+}
+
+
 update_dns_record() {
+    RECORD_NAME=$1
+
+    # Get the DNS record ID
+    RECORD_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?type=A&name=${RECORD_NAME}" \
+        -H "Authorization: Bearer ${API_TOKEN}" \
+        -H "Content-Type: application/json" | grep -o '"id":"[^"]*"' | head -n 1 | sed -E 's/"id":"([^"]*)"/\1/')
+
+    echo "Record Name: '$RECORD_NAME' Record ID: '$RECORD_ID'"
+
+    # Check if RECORD_ID is either empty or equal to "null"
+    if [ -z "${RECORD_ID}" ] || [ "${RECORD_ID}" = "null" ]; then
+        # If no record exists, create a new DNS record
+        echo "DNS record for ${RECORD_NAME} not found. Creating a new record."
+
+        CREATE_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records" \
+            -H "Authorization: Bearer ${API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"A\",\"name\":\"${RECORD_NAME}\",\"content\":\"${CURRENT_IP}\",\"ttl\":120,\"proxied\":false}")
+
+        if echo "${CREATE_RESPONSE}" | grep -q '"success":true'; then
+            echo "Successfully created ${RECORD_NAME} with IP ${CURRENT_IP}"
+        else
+            echo "Failed to create DNS record for ${RECORD_NAME}"
+            echo "Response: ${CREATE_RESPONSE}"
+            exit 1
+        fi
+    else
+        # If record exists, update the DNS record with the new IP
+        echo "Updating existing DNS record for ${RECORD_NAME}."
+
+        UPDATE_RESPONSE=$(curl -s -X PUT "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${RECORD_ID}" \
+            -H "Authorization: Bearer ${API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"A\",\"name\":\"${RECORD_NAME}\",\"content\":\"${CURRENT_IP}\",\"ttl\":120,\"proxied\":false}")
+
+        if echo "${UPDATE_RESPONSE}" | grep -q '"success":true'; then
+            echo "Successfully updated ${RECORD_NAME} to ${CURRENT_IP}"
+        else
+            echo "Failed to update ${RECORD_NAME}"
+            echo "Response: ${UPDATE_RESPONSE}"
+            exit 1
+        fi
+    fi
+}
+
+
+check_and_update_dns_record() {
     RECORD_NAME=$1
 
     CURRENT_RECORD_IP=$(get_dns_record "$RECORD_NAME")
@@ -56,20 +122,7 @@ update_dns_record() {
 
     # If the record doesn't exist or the IP has changed, update it
     if [ "${CURRENT_RECORD_IP}" = "NXDOMAIN" ] || [ "${CURRENT_RECORD_IP}" != "${CURRENT_IP}" ]; then
-        echo -e "Updating DNS record for ${RECORD_NAME} to ${CURRENT_IP}"
-
-        UPDATE_RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records" \
-            -H "Authorization: Bearer ${API_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data "{\"type\":\"A\",\"name\":\"${RECORD_NAME}\",\"content\":\"${CURRENT_IP}\",\"ttl\":120,\"proxied\":false}")
-
-        if echo "${UPDATE_RESPONSE}" | grep -q '"success":true'; then
-            echo -e "Successfully updated ${RECORD_NAME} to ${CURRENT_IP}"
-        else
-            echo -e "Failed to update ${RECORD_NAME}"
-            echo -e "Response: ${UPDATE_RESPONSE}"
-            exit 1
-        fi
+        update_dns_record "${RECORD_NAME}"
     else
         echo -e "IP address for ${RECORD_NAME} is already up to date (${CURRENT_IP}). Skipping update."
     fi
@@ -100,7 +153,7 @@ fi
 for SUBDOMAIN in "${SUBDOMAINS[@]}"; do
     RECORD_NAME="${SUBDOMAIN}.${ROOT_DOMAIN}"
     echo -e "\nChecking subdomain ${RECORD_NAME}"
-    update_dns_record "${RECORD_NAME}"
+    check_and_update_dns_record "${RECORD_NAME}"
 done
 
 echo -e "\nFinished!"
