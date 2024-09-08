@@ -146,7 +146,7 @@ source $CONFIG_FILE
 # Update the main domain if desired
 if [ "$UPDATE_ROOT_DOMAIN" = true ]; then
     echo -e "\nChecking root domain ${ROOT_DOMAIN}"
-    update_dns_record "${ROOT_DOMAIN}"
+    check_and_update_dns_record "${ROOT_DOMAIN}"
 fi
 
 # Update all subdomains in the array
